@@ -32,9 +32,9 @@ load_dotenv()
 
 api_key = os.getenv('API_UPLISTING')
 
-sender_email = os.getenv('emailss')
+sender_email = os.getenv('gmail')
 receiver_email = os.getenv('emailss')
-password = os.getenv('password')
+password = os.getenv('app_pass')
 
 # Encode the API key using Base64
 encoded_api_key = base64.b64encode(api_key.encode()).decode()
@@ -214,8 +214,9 @@ if files_to_email:
 
 
 # Set up SMTP server connection
-smtp_server = 'smtp.livemail.co.uk'
+smtp_server = 'smtp.gmail.com'
 smtp_port = 465  
+
 
 # Compose the email message
 msg['From'] = sender_email
