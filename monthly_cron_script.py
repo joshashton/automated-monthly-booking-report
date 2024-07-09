@@ -217,10 +217,6 @@ if files_to_email:
 smtp_server = 'smtp.livemail.co.uk'
 smtp_port = 465  
 
-sender_email = os.getenv('emailss')
-receiver_email = os.getenv('emailss')
-password = os.getenv('password')
-
 # Compose the email message
 msg['From'] = sender_email
 msg['To'] = receiver_email
