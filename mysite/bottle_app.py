@@ -1,5 +1,6 @@
-
 #imports
+from bottle import default_app, route
+
 import requests
 import json
 import pandas as pd
