@@ -1,8 +1,9 @@
-#imports 
+
+#imports
 import requests
 import json
 import pandas as pd
-import numpy as np 
+import numpy as np
 import time
 from datetime import datetime, timedelta, date
 
@@ -21,14 +22,24 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 
+@route('/')
+def hello_world():
+    return 'Hello from Bottle!'
+
+
 #get secrets from .env
 load_dotenv()
 
 api_key = os.getenv('API_UPLISTING')
 
 sender_email = os.getenv('gmail')
-receiver_email = os.getenv('emailss')
+receiver_email = os.getenv('email_malik')
 password = os.getenv('app_pass')
+
+# check dot env is working
+if not sender_email or not receiver_email or not password:
+    raise ValueError("One or more email settings (sender_email, receiver_email, password) are not set.")
+
 
 # Encode the API key using Base64
 encoded_api_key = base64.b64encode(api_key.encode()).decode()
@@ -95,7 +106,7 @@ def process_bookings_to_dataframe(bookings_data) -> pd.DataFrame:
         data_list.append(booking)
         #get pages number
     pages = bookings_data['meta']['total_pages']
-    
+
     df = pd.DataFrame(data_list)
     return df, pages
 
@@ -106,11 +117,11 @@ def get_prev_month_dates():
     # Format dates to '%Y-%m-%d'
     first_day = first_day.strftime('%Y-%m-%d')
     last_day = last_day.strftime('%Y-%m-%d')
-    
+
     return first_day, last_day
 
 def get_mulitpage(id, pages):
-   
+
     bookings_list = []
     for x in range(1,pages):
         #between each API call
@@ -121,9 +132,8 @@ def get_mulitpage(id, pages):
         if JSONRes:
             data, _ = process_bookings_to_dataframe(JSONRes)
             bookings_list.append(data)
-            #print(bookings_list)
             print("adding multipage")
-        
+
 
     return bookings_list
 
@@ -142,10 +152,11 @@ def fetch_and_process_bookings(id_list):
                 multipage_bookings = get_mulitpage(id, pages)
                 for df in multipage_bookings:
                     bookings_list.append(df)
-                    
-        
-        time.sleep(1)
-            
+
+        #sleep after 3 calls per property
+        if (idx+1) % 3 == 0:
+            time.sleep(1)
+
     return pd.concat(bookings_list, ignore_index=True)
 
 
@@ -164,65 +175,78 @@ house_groups = {
     'Najmi': ['98704']
 }
 
-# DataFrame to hold all bookings
-all_bookings_df = pd.DataFrame()
-#list of all csvs created to email
-files_to_email = []
 
-# Process and save bookings for each house group
-for house_name, ids in house_groups.items():
-    time.sleep(1)
-    bookings_df = fetch_and_process_bookings(ids)
+def run_monthly_script():
+    #list of all csvs created to email
+    files_to_email = []
 
-    #filter check in date for only dates in last month
-    filtered_bookings_df = bookings_df[(bookings_df['check_in'] >= date_from) & (bookings_df['check_in'] <= date_to)]
-    
-    # Save to CSV
-    csv_filename = f'{house_name}_monthlyBookings.csv'
-    files_to_email.append(csv_filename)
-    filtered_bookings_df.to_csv(csv_filename, index=False)
-    
-    print(f'Saved bookings for {house_name} to {csv_filename}')
-    # Append to all_bookings_df
-    all_bookings_df = pd.concat([all_bookings_df, bookings_df], ignore_index=True)
+    # Process and save bookings for each house group
+    for house_name, ids in house_groups.items():
 
+        bookings_df = fetch_and_process_bookings(ids)
 
+        #filter check in date for only dates in last month
+        filtered_bookings_df = bookings_df[(bookings_df['check_in'] >= date_from) & (bookings_df['check_in'] <= date_to)]
 
-# Email
+        # Save to CSV
+        csv_filename = f'{house_name}_monthlyBookings.csv'
+        files_to_email.append(csv_filename)
+        filtered_bookings_df.to_csv(csv_filename, index=False)
 
-# Create a MIME multipart message
-msg = MIMEMultipart()
-
-# Attach each CSV file
-if files_to_email:
-    for csv_file in files_to_email:
-        with open(csv_file, "rb") as attachment:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={csv_file}",
-            )
-            msg.attach(part)
+        print(f'Saved bookings for {house_name} to {csv_filename}')
+        #sleep after every property
+        time.sleep(1)
 
 
-# Set up SMTP server connection
-smtp_server = 'smtp.gmail.com'
-smtp_port = 465  
+    # Email
+
+    # Create a MIME multipart message
+    msg = MIMEMultipart()
+
+    # Attach each CSV file
+    if files_to_email:
+        for csv_file in files_to_email:
+            with open(csv_file, "rb") as attachment:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={csv_file}",
+                )
+                msg.attach(part)
 
 
-# Compose the email message
-msg['From'] = sender_email
-msg['To'] = receiver_email
-msg['Subject'] = f'Monthly Bookings Report ({date_from} - {date_to})'
+    # Set up SMTP server connection
+    smtp_server = 'smtp.gmail.com'
+    smtp_port = 465
 
-# Send the email via SMTP server
-try:
-    with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
-        server.login(sender_email, password)
-        server.send_message(msg)
-        print("Email sent successfully.")
-except Exception as e:
-    print(f"Failed to send email. Error: {str(e)}")
+
+    # Compose the email message
+    msg['From'] = sender_email
+    msg['To'] = receiver_email
+    msg['Subject'] = f'Monthly Bookings Report ({date_from} - {date_to})'
+
+    # Send the email via SMTP server
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, password)
+            server.send_message(msg)
+            print("Email sent successfully.")
+    except Exception as e:
+        print(f"Failed to send email. Error: {str(e)}")
+
+
+@route('/run_script')
+def run_script_view():
+    try:
+        run_monthly_script()
+        return {"status": "success", "message": "Script ran successfully."}
+    except Exception as e:
+        #response.status = 500
+        return {"status": "failure", "message": str(e)}
+
+
+
+application = default_app()
 
